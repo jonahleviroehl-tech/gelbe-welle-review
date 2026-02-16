@@ -862,20 +862,22 @@
         map.setView([displayCoords.lat, displayCoords.lng], 16);
 
         const isApprox = prov.is_approximate;
+        // Show orange ring underneath for approximate entries
         if (isApprox && !corrected) {
-          marker = L.circleMarker([displayCoords.lat, displayCoords.lng], {
-            radius: 10, color: '#d35400', fillColor: '#d35400', fillOpacity: 0.4,
+          const approxRing = L.circleMarker([displayCoords.lat, displayCoords.lng], {
+            radius: 18, color: '#d35400', fillColor: '#d35400', fillOpacity: 0.15,
             weight: 2, dashArray: '5,5'
           }).addTo(map);
-        } else {
-          marker = L.marker([displayCoords.lat, displayCoords.lng], { draggable: true }).addTo(map);
-          marker.on('dragend', () => {
-            const pos = marker.getLatLng();
-            corrections[e._id] = { lat: pos.lat, lng: pos.lng };
-            saveCorrections();
-            showEntry(currentIndex);
-          });
+          dupMarkers.push(approxRing); // reuse dupMarkers for cleanup
         }
+        // Always use a draggable marker so every entry can be repositioned
+        marker = L.marker([displayCoords.lat, displayCoords.lng], { draggable: true }).addTo(map);
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          corrections[e._id] = { lat: pos.lat, lng: pos.lng };
+          saveCorrections();
+          showEntry(currentIndex);
+        });
 
         // Show original position as ghost if corrected
         if (corrected) {
