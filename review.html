@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gelbe Welle - Data Review</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top bar */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+    #topbar h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f1c40f;
+      white-space: nowrap;
+    }
+    #progress-wrap {
+      flex: 1;
+      height: 8px;
+      background: #0f3460;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #27ae60, #f1c40f);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    #stats {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .stat { display: flex; align-items: center; gap: 4px; }
+    .stat-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-perfect { background: #27ae60; }
+    .dot-imprecise { background: #f39c12; }
+    .dot-trash { background: #e74c3c; }
+    .dot-unreviewed { background: #555; }
+    .dot-duplicate { background: #9b59b6; }
+
+    /* Main layout */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Map */
+    #map {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Side panel */
+    #panel {
+      width: 380px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: #16213e;
+      border-left: 1px solid #0f3460;
+      overflow-y: auto;
+    }
+
+    #entry-info {
+      padding: 16px;
+      flex: 1;
+    }
+    #entry-info h2 {
+      font-size: 16px;
+      color: #f1c40f;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    .info-row {
+      display: flex;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .info-label {
+      width: 90px;
+      flex-shrink: 0;
+      color: #8899aa;
+      font-weight: 500;
+    }
+    .info-value {
+      color: #ddd;
+      word-break: break-word;
+    }
+    .info-value a { color: #5dade2; }
+
+    .match-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-high { background: #27ae60; color: white; }
+    .badge-standard { background: #2980b9; color: white; }
+    .badge-geocode { background: #8e44ad; color: white; }
+    .badge-snap { background: #d35400; color: white; }
+    .badge-proximity { background: #7f8c8d; color: white; }
+
+    .confidence-bar {
+      height: 4px;
+      background: #0f3460;
+      border-radius: 2px;
+      margin-top: 4px;
+      overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    /* Action buttons */
+    #actions {
+      padding: 16px;
+      border-top: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 14px 8px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .action-btn:hover { transform: scale(1.03); }
+    .action-btn:active { transform: scale(0.97); }
+
+    .btn-perfect {
+      background: #1e4d2b;
+      color: #27ae60;
+      border-color: #27ae60;
+    }
+    .btn-perfect:hover, .btn-perfect.active { background: #27ae60; color: white; }
+
+    .btn-imprecise {
+      background: #4a3800;
+      color: #f39c12;
+      border-color: #f39c12;
+    }
+    .btn-imprecise:hover, .btn-imprecise.active { background: #f39c12; color: #1a1a2e; }
+
+    .btn-trash {
+      background: #4a1a1a;
+      color: #e74c3c;
+      border-color: #e74c3c;
+    }
+    .btn-trash:hover, .btn-trash.active { background: #e74c3c; color: white; }
+
+    .nav-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .nav-btn {
+      flex: 1;
+      padding: 8px;
+      background: #0f3460;
+      color: #8899aa;
+      border: 1px solid #1a4a8a;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .nav-btn:hover { background: #1a4a8a; color: #ddd; }
+
+    /* Keyboard hint */
+    kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      font-size: 11px;
+      font-family: monospace;
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      border-radius: 3px;
+      color: #8899aa;
+    }
+
+    /* Filter bar */
+    #filter-bar {
+      padding: 8px 16px;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    .filter-btn {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      border: 1px solid #1a4a8a;
+      background: transparent;
+      color: #8899aa;
+      cursor: pointer;
+    }
+    .filter-btn:hover { border-color: #5dade2; color: #5dade2; }
+    .filter-btn.active { background: #0f3460; border-color: #5dade2; color: #5dade2; }
+
+    .filter-select {
+      padding: 3px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      border: 1px solid #1a4a8a;
+      background: #0f3460;
+      color: #8899aa;
+      cursor: pointer;
+      max-width: 130px;
+    }
+    .filter-select:focus { border-color: #5dade2; color: #5dade2; outline: none; }
+
+    /* Counter */
+    #counter {
+      font-size: 14px;
+      color: #8899aa;
+      text-align: center;
+      padding: 4px;
+    }
+    #counter strong { color: #eee; }
+
+    /* Notes */
+    #entry-note {
+      width: 100%;
+      background: #0f3460;
+      color: #ddd;
+      border: 1px solid #1a4a8a;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: inherit;
+      resize: vertical;
+      margin-top: 8px;
+    }
+    #entry-note:focus { border-color: #5dade2; outline: none; }
+    #entry-note::placeholder { color: #556; }
+
+    /* Export bar */
+    #export-bar {
+      padding: 8px 16px;
+      border-top: 1px solid #0f3460;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .export-btn {
+      flex: 1;
+      padding: 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      border: 1px solid #1a4a8a;
+      background: #0f3460;
+      color: #8899aa;
+      cursor: pointer;
+      text-align: center;
+    }
+    .export-btn:hover { background: #1a4a8a; color: #ddd; }
+
+    /* Flash feedback */
+    .flash {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      font-size: 60px;
+      font-weight: 900;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 9999;
+      transition: all 0.25s ease-out;
+    }
+    .flash.show {
+      opacity: 0.6;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* Corrected badge */
+    .corrected-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      background: #8e44ad;
+      color: white;
+      margin-left: 6px;
+    }
+
+    /* Reset position link */
+    .reset-pos {
+      color: #e74c3c;
+      cursor: pointer;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .reset-pos:hover { text-decoration: underline; }
+
+    /* Help button */
+    #help-btn {
+      background: none;
+      border: 1px solid #0f3460;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      color: #8899aa;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #help-btn:hover { border-color: #5dade2; color: #5dade2; }
+
+    /* Help modal */
+    #help-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+    }
+    #help-overlay.visible { display: flex; }
+    #help-modal {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 12px;
+      max-width: 680px;
+      width: 90%;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 28px 32px;
+      color: #ddd;
+      font-size: 13px;
+      line-height: 1.6;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    #help-modal h2 {
+      color: #f1c40f;
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    #help-modal h3 {
+      color: #5dade2;
+      font-size: 14px;
+      margin-top: 20px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #0f3460;
+      padding-bottom: 4px;
+    }
+    #help-modal p { margin-bottom: 8px; }
+    #help-modal ul { margin: 0 0 8px 18px; }
+    #help-modal li { margin-bottom: 4px; }
+    #help-modal kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-family: monospace;
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      border-radius: 3px;
+      color: #eee;
+      min-width: 22px;
+      text-align: center;
+    }
+    #help-modal .badge-example {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    #help-modal .close-help {
+      float: right;
+      background: none;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      color: #8899aa;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    #help-modal .close-help:hover { border-color: #e74c3c; color: #e74c3c; }
+    #help-modal table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+    }
+    #help-modal th, #help-modal td {
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid #0f346044;
+      font-size: 12px;
+    }
+    #help-modal th { color: #8899aa; font-weight: 600; }
+
+    /* Leaflet fixes for dark theme */
+    .leaflet-control-zoom a {
+      background: #16213e !important;
+      color: #eee !important;
+      border-color: #0f3460 !important;
+    }
+    .leaflet-control-layers {
+      background: #16213e !important;
+      color: #eee !important;
+      border-color: #0f3460 !important;
+    }
+    .leaflet-control-layers-selector + span { color: #ddd; }
+  </style>
+</head>
+<body>
+  <div id="topbar">
+    <h1>Gelbe Welle Review</h1>
+    <div id="progress-wrap"><div id="progress-bar" style="width:0%"></div></div>
+    <div id="stats">
+      <div class="stat"><div class="stat-dot dot-perfect"></div><span id="stat-perfect">0</span></div>
+      <div class="stat"><div class="stat-dot dot-imprecise"></div><span id="stat-imprecise">0</span></div>
+      <div class="stat"><div class="stat-dot dot-trash"></div><span id="stat-trash">0</span></div>
+      <div class="stat"><div class="stat-dot dot-unreviewed"></div><span id="stat-unreviewed">0</span></div>
+      <div class="stat"><div class="stat-dot dot-duplicate"></div><span id="stat-duplicates">0</span></div>
+    </div>
+    <button id="help-btn" onclick="toggleHelp()" title="Help (H)">?</button>
+  </div>
+
+  <div id="main">
+    <div id="map"></div>
+    <div id="panel">
+      <div id="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="unreviewed">Unreviewed</button>
+        <button class="filter-btn" data-filter="perfect">Perfect</button>
+        <button class="filter-btn" data-filter="imprecise">Imprecise</button>
+        <button class="filter-btn" data-filter="trash">Trash</button>
+        <button class="filter-btn" data-filter="approximate">Approximate</button>
+        <button class="filter-btn" data-filter="duplicates">Duplicates</button>
+        <select id="filter-region" class="filter-select">
+          <option value="all">All regions</option>
+        </select>
+        <select id="filter-waterway" class="filter-select">
+          <option value="all">All waterways</option>
+        </select>
+      </div>
+      <div id="counter"></div>
+      <div id="entry-info">
+        <p style="color:#556; text-align:center; padding-top:40px;">Loading data...</p>
+      </div>
+      <div id="actions">
+        <div class="action-row">
+          <button class="action-btn btn-perfect" onclick="classify('perfect')"><kbd>1</kbd> Perfect</button>
+          <button class="action-btn btn-imprecise" onclick="classify('imprecise')"><kbd>2</kbd> Imprecise</button>
+          <button class="action-btn btn-trash" onclick="classify('trash')"><kbd>3</kbd> Trash</button>
+        </div>
+        <textarea id="entry-note" placeholder="Add a note..." rows="2"></textarea>
+        <div class="nav-row">
+          <button class="nav-btn" onclick="navigate(-1)"><kbd>&larr;</kbd> Prev</button>
+          <button class="nav-btn" onclick="navigate(1)"><kbd>&rarr;</kbd> Next</button>
+          <button class="nav-btn" onclick="jumpToNextUnreviewed()"><kbd>Space</kbd> Next unreviewed</button>
+        </div>
+        <div class="nav-row">
+          <button class="nav-btn" onclick="toggleOverview()" id="btn-overview"><kbd>O</kbd> Overview</button>
+        </div>
+      </div>
+      <div id="export-bar">
+        <button class="export-btn" onclick="exportResults()">Export Reviewed JSON</button>
+        <button class="export-btn" onclick="resetResults()">Reset all</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Modal -->
+  <div id="help-overlay" onclick="if(event.target===this)toggleHelp()">
+    <div id="help-modal">
+      <button class="close-help" onclick="toggleHelp()">Close &times;</button>
+      <h2>Review Guide &mdash; Read This First</h2>
+      <p>You are checking whether <strong>map markers</strong> are placed at the correct <strong>waterfront locations</strong> (marinas, boat ramps, docks, landing stages) across Germany. Each marker was placed automatically and may be wrong.</p>
+
+      <h3>Quick Decision Guide</h3>
+      <div style="background:#0f3460;border-radius:8px;padding:14px;margin:8px 0;font-size:12px;line-height:1.8;">
+        <strong>1.</strong> Is the marker at a dock, marina, boat ramp, or landing stage on the water?<br>
+        &nbsp;&nbsp;&rarr; <strong style="color:#27ae60;">YES</strong> &rarr; Press <kbd>1</kbd> (Perfect)<br><br>
+        <strong>2.</strong> Is the marker nearby (same town, same waterway) but not exactly at the facility?<br>
+        &nbsp;&nbsp;&rarr; <strong style="color:#f39c12;">YES</strong> &rarr; <strong>Drag the marker</strong> to the correct waterfront spot, then press <kbd>2</kbd> (Imprecise)<br><br>
+        <strong>3.</strong> Is the marker in the wrong place entirely, or you cannot find any matching facility?<br>
+        &nbsp;&nbsp;&rarr; <strong style="color:#e74c3c;">YES</strong> &rarr; Press <kbd>3</kbd> (Trash)<br><br>
+        <strong style="color:#e74c3c;">When in doubt: mark as Trash.</strong> Do not guess. Wrong data is worse than no data.
+      </div>
+
+      <h3>What To Do When You're Unsure</h3>
+      <p>If the marker position is not obviously correct, use the <strong>side panel information</strong> to verify:</p>
+      <ol>
+        <li><strong>Switch to satellite view</strong> (layer button, top-right of map). Look for docks, piers, or boats in the water near the marker.</li>
+        <li><strong>Check the side panel</strong>: the operator name ("Betreiber"), waterway name ("Gewaesser"), town ("Ort"), and address ("Strasse") tell you what should be at this location.</li>
+        <li><strong>Click "Google Maps"</strong> or <strong>"Street View"</strong> links in the panel to see real photos of the area.</li>
+        <li><strong>Click the "Google" search link</strong> to look up the facility and find its real address or website.</li>
+        <li><strong>Compare</strong>: Does the facility name, waterway, or address match what you see at or near the marker?</li>
+        <li>If <span style="color:#27ae60;">green-highlighted text</span> appears in the "OSM Data" section, it means the map data name/phone/website matches &mdash; this is a strong confirmation.</li>
+        <li><strong>If you cannot confirm</strong> that the marker matches the entry &rarr; press <kbd>3</kbd> (Trash).</li>
+      </ol>
+
+      <h3>Classification Rules</h3>
+      <table>
+        <tr>
+          <th>Rating</th>
+          <th>Key</th>
+          <th>When to use</th>
+        </tr>
+        <tr>
+          <td style="color:#27ae60;font-weight:600;">Perfect</td>
+          <td><kbd>1</kbd></td>
+          <td>Marker is directly at a waterfront facility (dock, marina, boat ramp, landing stage). You can see it on satellite or it matches the entry info.</td>
+        </tr>
+        <tr>
+          <td style="color:#f39c12;font-weight:600;">Imprecise</td>
+          <td><kbd>2</kbd></td>
+          <td>Marker is close but not exact. <strong>First drag the marker</strong> to the correct spot, then press <kbd>2</kbd>. Use this when you found the right facility but the marker was off by 50-500m.</td>
+        </tr>
+        <tr>
+          <td style="color:#e74c3c;font-weight:600;">Trash</td>
+          <td><kbd>3</kbd></td>
+          <td>Marker is clearly wrong (wrong town, wrong waterway, middle of nowhere) <strong>OR</strong> you cannot find any matching facility near the marker. When in doubt, use Trash.</td>
+        </tr>
+      </table>
+
+      <h3>Special Markers</h3>
+      <ul>
+        <li><span class="badge-example" style="background:#d3540033;border:1px solid #d35400;color:#d35400;">APPROXIMATE</span> Position was estimated, not matched to a real feature. Likely needs dragging or may be Trash.</li>
+        <li><span class="badge-example" style="background:#e74c3c22;border:1px solid #e74c3c;color:#e74c3c;">DUPLICATE FLAG</span> This entry shares its position with another entry. Check carefully &mdash; one may be correct and the other wrong.</li>
+        <li><span class="badge-example" style="background:#9b59b622;border:1px solid #9b59b6;color:#9b59b6;">DUPLICATE GROUP</span> Multiple entries at the same spot. Purple markers on the map show the other entries. Click the linked name to jump between them.</li>
+      </ul>
+
+      <h3>Dragging the Marker</h3>
+      <ul>
+        <li>Click and <strong>drag the blue marker</strong> to the correct waterfront position.</li>
+        <li>A grey ghost marker shows the original position.</li>
+        <li>To undo: click <span style="color:#e74c3c;">Reset</span> in the coordinates row.</li>
+      </ul>
+
+      <h3>Keyboard Shortcuts</h3>
+      <table>
+        <tr><td><kbd>1</kbd></td><td>Perfect</td><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>Previous / Next</td></tr>
+        <tr><td><kbd>2</kbd></td><td>Imprecise</td><td><kbd>Space</kbd></td><td>Next unreviewed</td></tr>
+        <tr><td><kbd>3</kbd></td><td>Trash</td><td><kbd>O</kbd></td><td>Overview map</td></tr>
+        <tr><td><kbd>H</kbd></td><td>This guide</td><td><kbd>Esc</kbd></td><td>Close guide</td></tr>
+      </table>
+
+      <h3>Saving</h3>
+      <p>Your work is <strong>saved automatically</strong> in your browser. You can close the tab and come back later. Use <strong>"Export Reviewed JSON"</strong> at the bottom to download your results when done.</p>
+    </div>
+  </div>
+
+  <div id="flash-perfect" class="flash" style="color:#27ae60;">&#10003;</div>
+  <div id="flash-imprecise" class="flash" style="color:#f39c12;">~</div>
+  <div id="flash-trash" class="flash" style="color:#e74c3c;">&#10007;</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // --- State ---
+    let entries = [];
+    let reviews = {};       // id -> 'perfect' | 'imprecise' | 'trash'
+    let corrections = {};   // id -> { lat, lng }
+    let notes = {};         // id -> string
+    let currentIndex = 0;
+    let filteredIndices = [];
+    let currentFilter = 'all';
+    let filterRegion = 'all';
+    let filterWaterway = 'all';
+    let marker = null;
+    let origMarker = null;
+    let corrLine = null;
+    let dupMarkers = [];
+    let overviewLayer = null;
+    let isOverview = false;
+    let duplicateGroups = {}; // coordKey → [entryIndex, ...]
+    let classifyCooldown = false; // prevent auto-clicker abuse
+
+    const STORAGE_KEY = 'gelbe-welle-reviews';
+    const CORRECTIONS_KEY = 'gelbe-welle-corrections';
+    const NOTES_KEY = 'gelbe-welle-notes';
+
+    // --- Map setup ---
+    const map = L.map('map', { zoomControl: true }).setView([51.16, 10.45], 7);
+
+    const osmBase = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    });
+
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri',
+      maxZoom: 19
+    });
+
+    const openSeaMap = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenSeaMap',
+      maxZoom: 19
+    });
+
+    osmBase.addTo(map);
+    openSeaMap.addTo(map);
+
+    L.control.layers(
+      { 'Streets': osmBase, 'Satellite': satellite },
+      { 'OpenSeaMap': openSeaMap },
+      { position: 'topright', collapsed: true }
+    ).addTo(map);
+
+    // --- Load data ---
+    async function loadData() {
+      const response = await fetch('./data/gelbe-welle-osm.json');
+      const data = await response.json();
+
+      // Flatten all entries with their region
+      let flatIndex = 0;
+      for (const [region, regionEntries] of Object.entries(data.regionen || {})) {
+        for (const entry of regionEntries) {
+          entry._region = region;
+          entry._id = `entry_${flatIndex++}`;
+          entries.push(entry);
+        }
+      }
+
+      // Sort: lowest confidence first so worst matches get reviewed first
+      entries.sort((a, b) => {
+        const ca = a._provenance?.match_confidence ?? 1;
+        const cb = b._provenance?.match_confidence ?? 1;
+        return ca - cb;
+      });
+
+      // Build duplicate groups (entries sharing same coordinate)
+      duplicateGroups = {};
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (!e.coordinates) continue;
+        const key = `${e.coordinates.lat.toFixed(4)},${e.coordinates.lng.toFixed(4)}`;
+        if (!duplicateGroups[key]) duplicateGroups[key] = [];
+        duplicateGroups[key].push(i);
+      }
+      for (const key of Object.keys(duplicateGroups)) {
+        if (duplicateGroups[key].length < 2) delete duplicateGroups[key];
+      }
+
+      // Load saved state
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) reviews = JSON.parse(saved);
+      } catch (e) {}
+      try {
+        const saved = localStorage.getItem(CORRECTIONS_KEY);
+        if (saved) corrections = JSON.parse(saved);
+      } catch (e) {}
+      try {
+        const saved = localStorage.getItem(NOTES_KEY);
+        if (saved) notes = JSON.parse(saved);
+      } catch (e) {}
+
+      // Populate region/waterway dropdowns
+      const regions = [...new Set(entries.map(e => e._region).filter(Boolean))].sort();
+      const waterways = [...new Set(entries.map(e => e.gewaesser).filter(Boolean))].sort();
+
+      const regionSelect = document.getElementById('filter-region');
+      regions.forEach(r => regionSelect.add(new Option(r, r)));
+
+      const waterwaySelect = document.getElementById('filter-waterway');
+      waterways.forEach(w => waterwaySelect.add(new Option(w, w)));
+
+      applyFilter('all');
+      showEntry(0);
+      updateStats();
+    }
+
+    // --- Filter ---
+    function applyFilter(filter) {
+      currentFilter = filter;
+      filteredIndices = [];
+
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const status = reviews[e._id];
+
+        // Region filter
+        if (filterRegion !== 'all' && e._region !== filterRegion) continue;
+        // Waterway filter
+        if (filterWaterway !== 'all' && e.gewaesser !== filterWaterway) continue;
+        // Status filter
+        if (filter === 'all') filteredIndices.push(i);
+        else if (filter === 'unreviewed' && !status) filteredIndices.push(i);
+        else if (filter === 'approximate' && e._provenance?.is_approximate) filteredIndices.push(i);
+        else if (filter === 'duplicates') {
+          // Handled below — group duplicates together
+        }
+        else if (filter === status) filteredIndices.push(i);
+      }
+
+      // For duplicates filter, group entries by their duplicate group so pairs are adjacent
+      if (filter === 'duplicates') {
+        filteredIndices = [];
+        for (const members of Object.values(duplicateGroups)) {
+          for (const idx of members) {
+            const e = entries[idx];
+            if (filterRegion !== 'all' && e._region !== filterRegion) continue;
+            if (filterWaterway !== 'all' && e.gewaesser !== filterWaterway) continue;
+            filteredIndices.push(idx);
+          }
+        }
+      }
+
+      // Update filter buttons
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+      });
+
+      // Reset to first in filtered set
+      currentIndex = 0;
+      if (filteredIndices.length > 0) {
+        showEntry(0);
+      } else {
+        document.getElementById('entry-info').innerHTML =
+          '<p style="color:#556; text-align:center; padding-top:40px;">No entries match this filter.</p>';
+        document.getElementById('counter').innerHTML = '0 / 0';
+      }
+    }
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
+    });
+
+    document.getElementById('filter-region').addEventListener('change', (e) => {
+      filterRegion = e.target.value;
+      applyFilter(currentFilter);
+    });
+
+    document.getElementById('filter-waterway').addEventListener('change', (e) => {
+      filterWaterway = e.target.value;
+      applyFilter(currentFilter);
+    });
+
+    // --- Duplicate offset helper ---
+    function getOffsetCoords(lat, lng, indexInGroup, groupSize) {
+      const OFFSET = 0.00015; // ~15m
+      const angle = (2 * Math.PI * indexInGroup) / groupSize;
+      return {
+        lat: lat + OFFSET * Math.cos(angle),
+        lng: lng + OFFSET * Math.sin(angle)
+      };
+    }
+
+    function getDuplicateGroup(e, entryIdx) {
+      if (!e.coordinates) return null;
+      const key = `${e.coordinates.lat.toFixed(4)},${e.coordinates.lng.toFixed(4)}`;
+      const group = duplicateGroups[key];
+      if (!group || group.length < 2) return null;
+      return { key, members: group, myIndex: group.indexOf(entryIdx) };
+    }
+
+    // --- Help modal ---
+    function toggleHelp() {
+      document.getElementById('help-overlay').classList.toggle('visible');
+    }
+
+    // Jump to a specific entry by its index in the entries array
+    window.jumpToEntry = function(entryIdx) {
+      const filtIdx = filteredIndices.indexOf(entryIdx);
+      if (filtIdx >= 0) showEntry(filtIdx);
+    };
+
+    // --- Show entry ---
+    function showEntry(filteredIdx) {
+      if (filteredIdx < 0 || filteredIdx >= filteredIndices.length) return;
+      if (isOverview) { isOverview = false; hideOverview(); }
+      currentIndex = filteredIdx;
+
+      const entryIdx = filteredIndices[filteredIdx];
+      const e = entries[entryIdx];
+      const prov = e._provenance || {};
+      const method = prov.match_method || 'unknown';
+      const confidence = prov.match_confidence ?? null;
+      const status = reviews[e._id];
+      const corrected = corrections[e._id];
+
+      // Update counter
+      document.getElementById('counter').innerHTML =
+        `<strong>${filteredIdx + 1}</strong> / ${filteredIndices.length}`;
+
+      // Clean up map layers
+      if (marker) map.removeLayer(marker);
+      if (origMarker) { map.removeLayer(origMarker); origMarker = null; }
+      if (corrLine) { map.removeLayer(corrLine); corrLine = null; }
+      dupMarkers.forEach(m => map.removeLayer(m));
+      dupMarkers = [];
+
+      // Move map + add draggable marker
+      if (e.coordinates) {
+        const dupGroup = getDuplicateGroup(e, entryIdx);
+        let displayCoords = corrected || e.coordinates;
+
+        // Apply offset for duplicate entries (so they don't stack)
+        if (dupGroup && !corrected) {
+          displayCoords = getOffsetCoords(
+            e.coordinates.lat, e.coordinates.lng,
+            dupGroup.myIndex, dupGroup.members.length
+          );
+        }
+
+        map.setView([displayCoords.lat, displayCoords.lng], 16);
+
+        const isApprox = prov.is_approximate;
+        // Show orange ring underneath for approximate entries
+        if (isApprox && !corrected) {
+          const approxRing = L.circleMarker([displayCoords.lat, displayCoords.lng], {
+            radius: 18, color: '#d35400', fillColor: '#d35400', fillOpacity: 0.15,
+            weight: 2, dashArray: '5,5'
+          }).addTo(map);
+          dupMarkers.push(approxRing); // reuse dupMarkers for cleanup
+        }
+        // Always use a draggable marker so every entry can be repositioned
+        marker = L.marker([displayCoords.lat, displayCoords.lng], { draggable: true }).addTo(map);
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          corrections[e._id] = { lat: pos.lat, lng: pos.lng };
+          saveCorrections();
+          showEntry(currentIndex);
+        });
+
+        // Show original position as ghost if corrected
+        if (corrected) {
+          origMarker = L.circleMarker([e.coordinates.lat, e.coordinates.lng], {
+            radius: 8, color: '#888', fillColor: '#888', fillOpacity: 0.3, weight: 1, dashArray: '4'
+          }).addTo(map);
+          corrLine = L.polyline(
+            [[e.coordinates.lat, e.coordinates.lng], [corrected.lat, corrected.lng]],
+            { color: '#888', weight: 1, dashArray: '4' }
+          ).addTo(map);
+        }
+
+        // Show ghost markers for duplicate group peers
+        if (dupGroup) {
+          for (const peerIdx of dupGroup.members) {
+            if (peerIdx === entryIdx) continue;
+            const peer = entries[peerIdx];
+            const peerCorr = corrections[peer._id];
+            const peerCoords = peerCorr || getOffsetCoords(
+              peer.coordinates.lat, peer.coordinates.lng,
+              dupGroup.members.indexOf(peerIdx), dupGroup.members.length
+            );
+            const dm = L.circleMarker([peerCoords.lat, peerCoords.lng], {
+              radius: 7, color: '#9b59b6', fillColor: '#9b59b6', fillOpacity: 0.3,
+              weight: 1, dashArray: '4'
+            }).addTo(map);
+            dm.bindTooltip(peer.betreiber || peer.anleger || '?', { direction: 'top', offset: [0, -8] });
+            dm.on('click', () => jumpToEntry(peerIdx));
+            dupMarkers.push(dm);
+          }
+        }
+      }
+
+      // Match method badge
+      let badgeClass = 'badge-standard';
+      if (method.includes('high_confidence')) badgeClass = 'badge-high';
+      else if (method.includes('geocode') || method.includes('forward')) badgeClass = 'badge-geocode';
+      else if (method.includes('snap')) badgeClass = 'badge-snap';
+      else if (method.includes('proximity')) badgeClass = 'badge-proximity';
+
+      // Confidence bar color
+      let confColor = '#e74c3c';
+      if (confidence >= 0.7) confColor = '#27ae60';
+      else if (confidence >= 0.4) confColor = '#f39c12';
+
+      // Check if this is a duplicate entry
+      const dupGroup = e.coordinates ? getDuplicateGroup(e, entryIdx) : null;
+      const isDuplicate = !!dupGroup;
+
+      // Build info
+      let html = '';
+      if (isDuplicate) {
+        const groupNum = Object.keys(duplicateGroups).indexOf(
+          `${e.coordinates.lat.toFixed(4)},${e.coordinates.lng.toFixed(4)}`
+        ) + 1;
+        const totalGroups = Object.keys(duplicateGroups).length;
+        html += `<div style="background:#9b59b622;border:1px solid #9b59b6;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;font-weight:600;color:#9b59b6;">DUPLICATE &mdash; Group ${groupNum} of ${totalGroups} (${dupGroup.members.length} entries at this location)</div>`;
+      }
+      html += `<h2>${e.betreiber || e.anleger || 'Unknown'}</h2>`;
+
+      if (e.anleger && e.anleger !== e.betreiber) {
+        html += row('Anleger', e.anleger);
+      }
+      html += row('Ort', [e.plz, e.ort].filter(Boolean).join(' ') || null);
+      html += row('Strasse', e.strasse);
+      html += row('Gewaesser', e.gewaesser);
+      html += row('Region', e._region);
+      html += row('Typ', e.feature_type?.replace(/_/g, ' '));
+      html += row('Telefon', e.telefon);
+
+      if (e.internet) {
+        html += `<div class="info-row"><div class="info-label">Web</div><div class="info-value"><a href="${e.internet}" target="_blank">${e.internet}</a></div></div>`;
+      }
+
+      html += '<hr style="border:0;border-top:1px solid #0f3460;margin:12px 0">';
+      html += row('Method', `<span class="match-badge ${badgeClass}">${method}</span>`);
+      html += row('DTV ID', prov.matched_dtv_identifier);
+
+      if (confidence !== null) {
+        html += `<div class="info-row"><div class="info-label">Confidence</div><div class="info-value">${(confidence * 100).toFixed(0)}%<div class="confidence-bar"><div class="confidence-fill" style="width:${confidence * 100}%;background:${confColor}"></div></div></div></div>`;
+      }
+
+      if (e.osm_id) {
+        const osmUrl = 'https://www.openstreetmap.org/' + e.osm_id;
+        html += row('OSM', `<a href="${osmUrl}" target="_blank">${e.osm_id}</a>`);
+      }
+
+      if (e.coordinates) {
+        const lat = e.coordinates.lat, lng = e.coordinates.lng;
+
+        if (corrected) {
+          html += row('Original', `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          html += row('Corrected',
+            `${corrected.lat.toFixed(5)}, ${corrected.lng.toFixed(5)} ` +
+            `<span class="corrected-badge">MOVED</span>` +
+            `<span class="reset-pos" onclick="resetPosition()">Reset</span>`
+          );
+        } else {
+          html += row('Coords', `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+
+        const displayLat = corrected ? corrected.lat : lat;
+        const displayLng = corrected ? corrected.lng : lng;
+        const gmapsUrl = `https://www.google.com/maps/@${displayLat},${displayLng},18z`;
+        const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${displayLat},${displayLng}`;
+        html += row('Links',
+          `<a href="${gmapsUrl}" target="_blank">Google Maps</a> &middot; ` +
+          `<a href="${streetViewUrl}" target="_blank">Street View</a>`
+        );
+
+        const searchName = e.betreiber || e.anleger || '';
+        const searchTown = e.ort || '';
+        if (searchName) {
+          const googleQuery = encodeURIComponent(`${searchName} ${searchTown} Gelbe Welle`);
+          html += row('Search', `<a href="https://www.google.com/search?q=${googleQuery}" target="_blank">Google "${searchName}"</a>`);
+        }
+      }
+
+      // OSM metadata (from matched feature's tags)
+      const osmTags = prov.osm_tags || {};
+      if (Object.values(osmTags).some(v => v)) {
+        html += '<hr style="border:0;border-top:1px solid #0f3460;margin:12px 0">';
+        html += '<div style="font-size:12px;color:#f1c40f;font-weight:600;margin-bottom:6px;">OSM Data</div>';
+
+        if (osmTags.osm_name) {
+          const nameMatch = e.betreiber && osmFuzzyMatch(osmTags.osm_name, e.betreiber);
+          html += row('OSM Name', highlightIf(osmTags.osm_name, nameMatch));
+        }
+        if (osmTags.osm_operator) {
+          const opMatch = e.betreiber && osmFuzzyMatch(osmTags.osm_operator, e.betreiber);
+          html += row('OSM Operator', highlightIf(osmTags.osm_operator, opMatch));
+        }
+        if (osmTags.osm_phone) {
+          const phoneMatch = e.telefon && normalizePhone(osmTags.osm_phone) === normalizePhone(e.telefon);
+          html += row('OSM Phone', highlightIf(osmTags.osm_phone, phoneMatch));
+        }
+        if (osmTags.osm_website) {
+          const webMatch = e.internet && normUrl(osmTags.osm_website) === normUrl(e.internet);
+          html += row('OSM Web', highlightIf(`<a href="${osmTags.osm_website.startsWith('http') ? osmTags.osm_website : 'https://' + osmTags.osm_website}" target="_blank">${osmTags.osm_website}</a>`, webMatch));
+        }
+        if (osmTags.osm_harbour_category) {
+          html += row('Harbour', osmTags.osm_harbour_category);
+        }
+        if (osmTags.osm_facility_category) {
+          html += row('Facility', osmTags.osm_facility_category);
+        }
+      }
+
+      // Approximate / duplicate flags
+      if (prov.is_approximate) {
+        html += `<div style="margin-top:12px;padding:6px 10px;border-radius:6px;background:#d3540033;border:1px solid #d35400;font-size:11px;font-weight:600;color:#d35400;">APPROXIMATE - Waterway snap (no unique OSM feature found)</div>`;
+      }
+      if (prov.duplicate_flag) {
+        html += `<div style="margin-top:4px;padding:6px 10px;border-radius:6px;background:#e74c3c22;border:1px solid #e74c3c;font-size:11px;font-weight:600;color:#e74c3c;">DUPLICATE FLAG - Could not resolve unique position</div>`;
+      }
+
+      // Duplicate group badge with navigation links
+      if (e.coordinates) {
+        const dupGroup = getDuplicateGroup(e, entryIdx);
+        if (dupGroup) {
+          const others = dupGroup.members.filter(idx => idx !== entryIdx);
+          const links = others.map(idx => {
+            const other = entries[idx];
+            const name = other.betreiber || other.anleger || '?';
+            return `<a href="#" onclick="jumpToEntry(${idx});return false;" style="color:#9b59b6;text-decoration:underline;">${name}</a>`;
+          }).join(', ');
+          html += `<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:#9b59b622;border:1px solid #9b59b6;font-size:11px;font-weight:600;color:#9b59b6;">DUPLICATE GROUP - Same coordinates as: ${links}</div>`;
+        }
+      }
+
+      // Current status
+      if (status) {
+        const statusColors = { perfect: '#27ae60', imprecise: '#f39c12', trash: '#e74c3c' };
+        html += `<div style="margin-top:12px;padding:6px 10px;border-radius:6px;background:${statusColors[status]}22;border:1px solid ${statusColors[status]};font-size:12px;font-weight:600;color:${statusColors[status]};">Marked: ${status.toUpperCase()}</div>`;
+      }
+
+      const entryInfoEl = document.getElementById('entry-info');
+      entryInfoEl.innerHTML = html;
+      entryInfoEl.style.borderLeft = isDuplicate ? '3px solid #9b59b6' : 'none';
+
+      // Highlight active button
+      document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
+      if (status === 'perfect') document.querySelector('.btn-perfect').classList.add('active');
+      if (status === 'imprecise') document.querySelector('.btn-imprecise').classList.add('active');
+      if (status === 'trash') document.querySelector('.btn-trash').classList.add('active');
+
+      // Load note
+      document.getElementById('entry-note').value = notes[e._id] || '';
+    }
+
+    function row(label, value) {
+      if (!value) return '';
+      return `<div class="info-row"><div class="info-label">${label}</div><div class="info-value">${value}</div></div>`;
+    }
+
+    function highlightIf(text, match) {
+      return match
+        ? `<span style="color:#27ae60;font-weight:600;">${text}</span>`
+        : text;
+    }
+
+    function normalizePhone(p) {
+      return (p || '').replace(/[\s\-\/()]/g, '');
+    }
+
+    function normUrl(u) {
+      return (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+    }
+
+    function osmFuzzyMatch(a, b) {
+      if (!a || !b) return false;
+      const na = a.toLowerCase(), nb = b.toLowerCase();
+      return na === nb || na.includes(nb) || nb.includes(na);
+    }
+
+    // --- Reset corrected position ---
+    function resetPosition() {
+      if (filteredIndices.length === 0) return;
+      const e = entries[filteredIndices[currentIndex]];
+      delete corrections[e._id];
+      saveCorrections();
+      showEntry(currentIndex);
+    }
+
+    // --- Classify ---
+    function classify(status) {
+      if (filteredIndices.length === 0) return;
+      if (classifyCooldown) return; // prevent rapid-fire / auto-clicker
+
+      const entryIdx = filteredIndices[currentIndex];
+      const e = entries[entryIdx];
+
+      // Toggle: if already this status, unset it
+      const wasToggleOff = reviews[e._id] === status;
+      if (wasToggleOff) {
+        delete reviews[e._id];
+      } else {
+        reviews[e._id] = status;
+      }
+
+      saveReviews();
+      updateStats();
+      showFlash(status);
+
+      // Start cooldown — buttons disabled for 1.5s
+      classifyCooldown = true;
+      document.querySelectorAll('.action-btn').forEach(btn => btn.style.opacity = '0.4');
+      setTimeout(() => {
+        classifyCooldown = false;
+        document.querySelectorAll('.action-btn').forEach(btn => btn.style.opacity = '');
+      }, 1500);
+
+      // Only auto-advance when setting, not when toggling off
+      if (!wasToggleOff) {
+        setTimeout(() => {
+          if (currentFilter === 'unreviewed') {
+            const pos = currentIndex;
+            applyFilter('unreviewed');
+            currentIndex = Math.min(pos, filteredIndices.length - 1);
+            if (filteredIndices.length > 0) showEntry(currentIndex);
+          } else {
+            navigate(1);
+          }
+        }, 200);
+      } else {
+        showEntry(currentIndex);
+      }
+    }
+
+    function showFlash(status) {
+      const el = document.getElementById('flash-' + status);
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 300);
+    }
+
+    // --- Navigation ---
+    function navigate(direction) {
+      const next = currentIndex + direction;
+      if (next >= 0 && next < filteredIndices.length) {
+        showEntry(next);
+      }
+    }
+
+    function jumpToNextUnreviewed() {
+      for (let i = currentIndex + 1; i < filteredIndices.length; i++) {
+        const e = entries[filteredIndices[i]];
+        if (!reviews[e._id]) { showEntry(i); return; }
+      }
+      for (let i = 0; i <= currentIndex; i++) {
+        const e = entries[filteredIndices[i]];
+        if (!reviews[e._id]) { showEntry(i); return; }
+      }
+    }
+
+    // --- Overview ---
+    function toggleOverview() {
+      isOverview = !isOverview;
+      document.getElementById('btn-overview').style.background = isOverview ? '#1a4a8a' : '';
+      if (isOverview) {
+        showOverview();
+      } else {
+        hideOverview();
+        showEntry(currentIndex);
+      }
+    }
+
+    function showOverview() {
+      if (marker) { map.removeLayer(marker); marker = null; }
+      if (origMarker) { map.removeLayer(origMarker); origMarker = null; }
+      if (corrLine) { map.removeLayer(corrLine); corrLine = null; }
+
+      overviewLayer = L.layerGroup().addTo(map);
+      const bounds = L.latLngBounds();
+
+      entries.forEach((e, i) => {
+        if (!e.coordinates) return;
+        const status = reviews[e._id];
+        const isApprox = e._provenance?.is_approximate;
+        const color = status === 'perfect' ? '#27ae60'
+          : status === 'imprecise' ? '#f39c12'
+          : status === 'trash' ? '#e74c3c'
+          : isApprox ? '#d35400'
+          : '#888';
+
+        const coords = corrections[e._id] || e.coordinates;
+        const m = L.circleMarker([coords.lat, coords.lng], {
+          radius: 5, color, fillColor: color, fillOpacity: 0.6, weight: 1
+        }).addTo(overviewLayer);
+
+        m.bindTooltip(`${e.betreiber || e.anleger || '?'}`, { direction: 'top', offset: [0, -8] });
+
+        m.on('click', () => {
+          const filtIdx = filteredIndices.indexOf(i);
+          if (filtIdx >= 0) {
+            isOverview = false;
+            document.getElementById('btn-overview').style.background = '';
+            hideOverview();
+            showEntry(filtIdx);
+          }
+        });
+
+        bounds.extend([coords.lat, coords.lng]);
+      });
+
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+      }
+    }
+
+    function hideOverview() {
+      if (overviewLayer) { map.removeLayer(overviewLayer); overviewLayer = null; }
+    }
+
+    // --- Keyboard ---
+    document.addEventListener('keydown', (event) => {
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+
+      switch (event.key) {
+        case '1': classify('perfect'); break;
+        case '2': classify('imprecise'); break;
+        case '3': classify('trash'); break;
+        case 'ArrowLeft': navigate(-1); break;
+        case 'ArrowRight': navigate(1); break;
+        case ' ':
+          event.preventDefault();
+          jumpToNextUnreviewed();
+          break;
+        case 'o': case 'O':
+          toggleOverview();
+          break;
+        case 'h': case 'H':
+          toggleHelp();
+          break;
+        case 'Escape':
+          if (document.getElementById('help-overlay').classList.contains('visible')) {
+            toggleHelp();
+          }
+          break;
+      }
+    });
+
+    // --- Notes ---
+    document.getElementById('entry-note').addEventListener('input', (e) => {
+      if (filteredIndices.length === 0) return;
+      const entry = entries[filteredIndices[currentIndex]];
+      const val = e.target.value.trim();
+      if (val) {
+        notes[entry._id] = val;
+      } else {
+        delete notes[entry._id];
+      }
+      saveNotes();
+    });
+
+    // --- Persistence ---
+    function saveReviews() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reviews)); } catch (e) {}
+    }
+    function saveCorrections() {
+      try { localStorage.setItem(CORRECTIONS_KEY, JSON.stringify(corrections)); } catch (e) {}
+    }
+    function saveNotes() {
+      try { localStorage.setItem(NOTES_KEY, JSON.stringify(notes)); } catch (e) {}
+    }
+
+    function updateStats() {
+      let perfect = 0, imprecise = 0, trash = 0, unreviewed = 0;
+      for (const e of entries) {
+        const s = reviews[e._id];
+        if (s === 'perfect') perfect++;
+        else if (s === 'imprecise') imprecise++;
+        else if (s === 'trash') trash++;
+        else unreviewed++;
+      }
+
+      // Count entries in duplicate groups
+      let dupCount = 0;
+      for (const members of Object.values(duplicateGroups)) {
+        dupCount += members.length;
+      }
+
+      document.getElementById('stat-perfect').textContent = perfect;
+      document.getElementById('stat-imprecise').textContent = imprecise;
+      document.getElementById('stat-trash').textContent = trash;
+      document.getElementById('stat-unreviewed').textContent = unreviewed;
+      document.getElementById('stat-duplicates').textContent = dupCount;
+
+      const reviewed = perfect + imprecise + trash;
+      const pct = entries.length > 0 ? (reviewed / entries.length * 100) : 0;
+      document.getElementById('progress-bar').style.width = pct + '%';
+    }
+
+    // --- Export ---
+    function exportResults() {
+      const output = {
+        _metadata: {
+          source: 'OpenStreetMap',
+          license: 'ODbL v1.0',
+          attribution: '\u00a9 OpenStreetMap contributors',
+          review_date: new Date().toISOString().split('T')[0],
+          total_entries: entries.length,
+          reviewed: Object.keys(reviews).length,
+          summary: { perfect: 0, imprecise: 0, trash: 0 },
+          corrections_count: Object.keys(corrections).length
+        },
+        entries: []
+      };
+
+      for (const e of entries) {
+        const status = reviews[e._id] || 'unreviewed';
+        if (status !== 'unreviewed') output._metadata.summary[status]++;
+
+        // Only include perfect and imprecise in the public export
+        if (status !== 'perfect' && status !== 'imprecise') continue;
+
+        const corrected = corrections[e._id];
+        const note = notes[e._id];
+
+        output.entries.push({
+          betreiber: e.betreiber,
+          anleger: e.anleger,
+          strasse: e.strasse,
+          plz: e.plz,
+          ort: e.ort,
+          gewaesser: e.gewaesser,
+          km: e.km,
+          gastliegeplaetze: e.gastliegeplaetze,
+          internet: e.internet,
+          telefon: e.telefon,
+          coordinates: corrected || e.coordinates,
+          original_coordinates: corrected ? e.coordinates : undefined,
+          bundesland: e._region,
+          osm_id: e.osm_id,
+          feature_type: e.feature_type,
+          match_confidence: e._provenance?.match_confidence,
+          coordinate_source: e._provenance?.coordinate_source,
+          review_status: status,
+          review_note: note || undefined
+        });
+      }
+
+      const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'gelbe-welle-reviewed-' + new Date().toISOString().split('T')[0] + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function resetResults() {
+      if (confirm('Reset all reviews, corrections, and notes? This cannot be undone.')) {
+        reviews = {};
+        corrections = {};
+        notes = {};
+        saveReviews();
+        saveCorrections();
+        saveNotes();
+        updateStats();
+        applyFilter(currentFilter);
+      }
+    }
+
+    // --- Init ---
+    loadData();
+  </script>
+</body>
+</html>
